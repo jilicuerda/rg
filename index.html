@@ -3,244 +3,334 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>La Mécanique de Ridge</title>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <title>Comprendre la Régression Ridge</title>
+    
+    <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+    </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     
     <style>
         :root {
             --primary: #2c3e50;
-            --accent: #e67e22; /* Orange pour les variables */
-            --highlight: #27ae60; /* Vert pour le résultat */
-            --bg: #f8f9fa;
+            --secondary: #34495e;
+            --accent: #e74c3c;
+            --ridge: #27ae60;
+            --bg: #fdfdfd;
+            --card-bg: #ffffff;
         }
         body {
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg);
             color: #333;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
         }
         
-        h1, h2 { color: var(--primary); text-align: center; }
-        
-        .card {
-            background: white;
+        /* HEADER */
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 3rem 1rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        header h1 { margin: 0; font-size: 2.5rem; }
+        header p { margin-top: 10px; font-size: 1.2rem; opacity: 0.9; }
+
+        /* CONTAINER */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
             padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
         }
 
-        /* Styles pour les définitions de variables */
-        .var-def {
+        /* SECTIONS & CARDS */
+        section { margin-bottom: 3rem; }
+        
+        .section-title {
+            border-left: 5px solid var(--accent);
+            padding-left: 15px;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+            margin-bottom: 1.5rem;
+        }
+
+        /* TABLEAU COMPARATIF */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th { background-color: var(--primary); color: white; }
+        tr:hover { background-color: #f1f1f1; }
+
+        /* BOITES DE CONTENU */
+        .formula-box {
+            background: #edf2f7;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 1.2rem;
+            margin: 1rem 0;
+            border: 1px solid #cbd5e0;
+        }
+
+        .use-case-list li { margin-bottom: 10px; }
+
+        /* INTERACTIVITÉ (EXEMPLE) */
+        .step-display {
+            display: none;
+            animation: slideIn 0.4s ease-out;
+        }
+        .step-display.active { display: block; }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .calc-row {
             display: flex;
             align-items: center;
-            margin-bottom: 10px;
-            background: #fff;
-            padding: 10px;
-            border-left: 4px solid var(--accent);
+            margin: 15px 0;
+            flex-wrap: wrap;
         }
-        .var-symbol {
-            font-weight: bold;
-            font-size: 1.5rem;
-            width: 50px;
-            color: var(--primary);
-        }
-        .var-desc { flex-grow: 1; }
-
-        /* Zone interactive */
-        .step-container {
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 20px;
-            min-height: 350px;
-            background: #fff;
-            position: relative;
+        
+        .explanation-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid var(--ridge);
+            padding: 15px;
+            margin-top: 10px;
+            font-size: 0.95rem;
+            color: #1b5e20;
         }
 
-        .step-content { display: none; animation: fadeIn 0.5s; }
-        .step-content.active { display: block; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .matrix-box {
-            font-family: 'Courier New', monospace;
-            background: #eee;
-            padding: 10px;
-            display: inline-block;
-            border-radius: 5px;
-            margin: 5px;
-        }
-
-        .calculation-highlight {
-            font-size: 1.2rem;
-            color: var(--highlight);
-            font-weight: bold;
-        }
-
-        /* Contrôles */
         .controls {
             display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
         }
+
         button {
-            padding: 10px 25px;
-            background: var(--primary);
-            color: white;
+            padding: 12px 30px;
+            font-size: 1rem;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 1rem;
+            transition: all 0.3s;
+            font-weight: bold;
         }
-        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.next { background-color: var(--primary); color: white; }
+        button.next:hover { background-color: var(--secondary); transform: translateY(-2px); }
+        button.prev { background-color: #ddd; color: #333; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-        .note {
-            background: #fff3cd;
-            color: #856404;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-size: 0.9rem;
-        }
     </style>
 </head>
 <body>
 
-    <h1>Comprendre la Régression Ridge : Les Calculs</h1>
-    <p style="text-align: center;">Démystifier la formule : $\theta = (X^T X + \lambda I)^{-1} X^T y$</p>
+<header>
+    <h1>La Régression Ridge</h1>
+    <p>Comprendre la régularisation pour éviter le surapprentissage</p>
+</header>
 
-    <div class="card">
-        <h2>1. Les Ingrédients (Variables)</h2>
-        <p>Avant de calculer, il faut savoir qui est qui.</p>
+<div class="container">
+
+    <section>
+        <h2 class="section-title">1. Les Bases : C'est quoi et pourquoi ?</h2>
         
-        <div class="var-def">
-            <div class="var-symbol">$X$</div>
-            <div class="var-desc"><strong>La Matrice des Données (Input)</strong><br>C'est ce que l'on sait (ex: Surface de la maison).</div>
+        <div class="card">
+            <h3>Le Problème de la Régression Classique</h3>
+            <p>La régression linéaire standard essaie de minimiser l'erreur entre la prédiction et la réalité. Elle veut avoir "raison à tout prix" sur les données d'entraînement.</p>
+            <p><strong>Le danger :</strong> Si vos données sont bruitées ou si vos variables sont très corrélées (ex: taille en mètres et taille en cm), le modèle devient instable. Il apprend le bruit par cœur. C'est le <strong>Surapprentissage (Overfitting)</strong>.</p>
         </div>
-        <div class="var-def">
-            <div class="var-symbol">$y$</div>
-            <div class="var-desc"><strong>Le Vecteur Cible (Output)</strong><br>C'est ce qu'on veut prédire (ex: Prix de la maison).</div>
-        </div>
-        <div class="var-def">
-            <div class="var-symbol">$\theta$</div>
-            <div class="var-desc"><strong>Les Coefficients (Thêta)</strong><br>C'est ce qu'on cherche ! La "pente" de la droite. <br><em>Grand $\theta$ = Ligne très sensible. Petit $\theta$ = Ligne stable.</em></div>
-        </div>
-        <div class="var-def">
-            <div class="var-symbol">$\lambda$</div>
-            <div class="var-desc"><strong>La Pénalité (Lambda)</strong><br>Le "frein" qu'on ajoute. Plus il est grand, plus on force $\theta$ à être petit.</div>
-        </div>
-        <div class="var-def">
-            <div class="var-symbol">$I$</div>
-            <div class="var-desc"><strong>La Matrice Identité</strong><br>Un outil mathématique qui sert juste à ajouter $\lambda$ sur la diagonale.</div>
-        </div>
-    </div>
 
-    <div class="card">
-        <h2>2. Exemple de Calcul Pas à Pas</h2>
-        <p>Prenons un exemple ultra-simple pour pouvoir le faire de tête.</p>
-
-        <div class="step-container">
+        <div class="card">
+            <h3>La Solution Ridge</h3>
+            <p>La Régression Ridge ajoute une contrainte : <em>"Tu dois minimiser l'erreur, MAIS tu n'as pas le droit d'utiliser des coefficients trop grands."</em></p>
             
-            <div class="step-content active" id="step1">
-                <h3>Étape 1 : Nos Données</h3>
-                <p>Imaginons 2 maisons (données centrées/normalisées pour simplifier) :</p>
-                <ul>
-                    <li>Maison A : Surface = 1 ($x_1$), Prix = 2 ($y_1$)</li>
-                    <li>Maison B : Surface = 2 ($x_2$), Prix = 4 ($y_2$)</li>
-                </ul>
-                <p>On écrit ça sous forme de matrices :</p>
-                $$ X = \begin{bmatrix} 1 \\ 2 \end{bmatrix} \quad \text{et} \quad y = \begin{bmatrix} 2 \\ 4 \end{bmatrix} $$
-                <div class="note">Ici, la relation est évidente : le prix est exactement $2 \times$ la surface. Une régression normale devrait trouver une pente de 2.</div>
+            <div class="formula-box">
+                $$ Cost = \underbrace{\sum (y - \hat{y})^2}_{\text{Erreur (MSE)}} + \underbrace{\lambda \sum \theta^2}_{\text{Pénalité}} $$
             </div>
+            <ul>
+                <li><strong>$\lambda$ (Lambda) :</strong> C'est la force du frein. Si $\lambda=0$, c'est une régression normale. Si $\lambda$ est grand, le modèle est très rigide.</li>
+                <li><strong>$\theta^2$ :</strong> On met les coefficients au carré pour punir sévèrement les grandes valeurs.</li>
+            </ul>
+        </div>
+    </section>
 
-            <div class="step-content" id="step2">
-                <h3>Étape 2 : La "Variance" ($X^T X$)</h3>
-                <p>La première partie de la formule regarde la dispersion de nos données.</p>
-                $$ X^T X = [1 \quad 2] \times \begin{bmatrix} 1 \\ 2 \end{bmatrix} $$
-                $$ = (1 \times 1) + (2 \times 2) = \mathbf{5} $$
-                <p>Retenez ce chiffre : <strong>5</strong>. Dans une régression normale, on diviserait par ce chiffre.</p>
-            </div>
+    <section>
+        <h2 class="section-title">2. Quand l'utiliser & Différences</h2>
+        
+        <div class="card">
+            <h3>Cas d'usage principaux</h3>
+            <ul class="use-case-list">
+                <li>✅ <strong>Multicolinéarité :</strong> Quand vos variables d'entrée sont corrélées entre elles (le cas le plus fréquent).</li>
+                <li>✅ <strong>Trop de variables :</strong> Quand vous avez beaucoup de colonnes par rapport au nombre de lignes de données.</li>
+                <li>✅ <strong>Prévention du bruit :</strong> Quand vous voulez un modèle qui généralise bien sur de nouvelles données, quitte à être un peu moins précis sur l'entraînement.</li>
+            </ul>
+        </div>
 
-            <div class="step-content" id="step3">
-                <h3>Étape 3 : La "Magie" Ridge ($+ \lambda I$)</h3>
-                <p>C'est ici que tout change ! On a décidé d'utiliser une pénalité <strong>$\lambda = 1$</strong>.</p>
-                <p>On ajoute cette pénalité à notre valeur précédente ($5$).</p>
-                $$ (X^T X) + \lambda = 5 + 1 = \mathbf{6} $$
-                <div class="note">
-                    <strong>Pourquoi ?</strong> En augmentant ce chiffre (de 5 à 6), on augmente le dénominateur de la division finale. <br>
-                    Diviser par un nombre plus grand = Résultat plus petit. C'est ça le "Shrinkage" (rétrécissement) !
-                </div>
-            </div>
-
-            <div class="step-content" id="step4">
-                <h3>Étape 4 : La Corrélation ($X^T y$)</h3>
-                <p>On regarde maintenant le lien entre X et y.</p>
-                $$ X^T y = [1 \quad 2] \times \begin{bmatrix} 2 \\ 4 \end{bmatrix} $$
-                $$ = (1 \times 2) + (2 \times 4) = 2 + 8 = \mathbf{10} $$
-                <p>Ce chiffre représente "l'information brute" qui lie le prix à la surface.</p>
-            </div>
-
-            <div class="step-content" id="step5">
-                <h3>Étape 5 : Le Résultat Final</h3>
-                <p>On fait la division finale : $\theta = \frac{\text{Corrélation}}{\text{Variance Modifiée}}$</p>
-                
-                <table style="width:100%; text-align:center; border-collapse:collapse;">
+        <div class="card">
+            <h3>Régression Linéaire vs Ridge</h3>
+            <table>
+                <thead>
                     <tr>
-                        <td style="border-right: 2px solid #ddd; width:50%;">
-                            <strong>Régression Standard ($\lambda=0$)</strong><br><br>
-                            $$ \theta = \frac{10}{5} = \mathbf{2} $$
-                            <br>
-                            <em>Elle apprend parfaitement les données (2x).</em>
-                        </td>
-                        <td>
-                            <strong>Régression Ridge ($\lambda=1$)</strong><br><br>
-                            $$ \theta = \frac{10}{6} \approx \mathbf{1.67} $$
-                            <br>
-                            <span class="calculation-highlight">Le coefficient est réduit !</span>
-                        </td>
+                        <th>Critère</th>
+                        <th>Régression Linéaire (Classique)</th>
+                        <th>Régression Ridge</th>
                     </tr>
-                </table>
-                <br>
-                <div class="note" style="background-color: #d4edda; color: #155724;">
-                    <strong>Conclusion :</strong> La Ridge a volontairement "sous-estimé" la pente (1.67 au lieu de 2). <br>
-                    Si nos données avaient du bruit (erreurs), la version Standard (2) aurait été trop extrême. La version Ridge (1.67) est plus "prudente" et généralisera mieux.
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Objectif</strong></td>
+                        <td>Coller parfaitement aux données.</td>
+                        <td>Trouver un équilibre (Biais/Variance).</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Coefficients</strong></td>
+                        <td>Peuvent être énormes et instables.</td>
+                        <td>Sont rétrécis (Shrinkage) vers 0.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Risque</strong></td>
+                        <td>Forte Variance (Change beaucoup si on change un peu les données).</td>
+                        <td>Un peu de Biais (On simplifie volontairement la réalité).</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="section-title">3. Exemple de Calcul Détaillé</h2>
+        <p>Voyons comment la mathématique opère pour réduire les coefficients. Nous utilisons la formule de la solution exacte :</p>
+        <div class="formula-box" style="font-size: 1rem; padding: 10px;">
+            $$ \theta = (X^T X + \lambda I)^{-1} X^T y $$
+        </div>
+
+        <div class="card" id="interactive-area">
+            
+            <div class="step-display active" id="step1">
+                <h3>Étape 1 : Les Données Simplifiées</h3>
+                <p>Imaginons un cas ultra-simple avec 1 seule variable pour pouvoir calculer de tête.</p>
+                <div class="calc-row">
+                    <div>
+                        <strong>Input ($X$) :</strong> $\begin{bmatrix} 1 \\ 2 \end{bmatrix}$ (ex: Surface)
+                    </div>
+                    <div style="margin-left: 30px;">
+                        <strong>Cible ($y$) :</strong> $\begin{bmatrix} 2 \\ 4 \end{bmatrix}$ (ex: Prix)
+                    </div>
+                </div>
+                <div class="explanation-box">
+                    <strong>Analyse :</strong> On voit à l'œil nu que $y = 2 \times x$. Une régression normale devrait trouver une pente de <strong>2</strong>.
                 </div>
             </div>
 
+            <div class="step-display" id="step2">
+                <h3>Étape 2 : Calcul de la Variance ($X^T X$)</h3>
+                <p>On multiplie la matrice X par elle-même (transposée).</p>
+                <div class="formula-box">
+                    $$ 1 \times 1 + 2 \times 2 = 1 + 4 = \mathbf{5} $$
+                </div>
+                <div class="explanation-box">
+                    <strong>Interprétation :</strong> Le chiffre <strong>5</strong> représente la "puissance" ou la variance de nos données d'entrée. C'est le dénominateur (ce qui divise) dans la régression classique.
+                </div>
+            </div>
+
+            <div class="step-display" id="step3">
+                <h3>Étape 3 : Ajout de la Pénalité Ridge ($\lambda I$)</h3>
+                <p>C'est ici que la magie opère. On choisit une pénalité <strong>$\lambda = 1$</strong>.</p>
+                <div class="formula-box">
+                    $$ (X^T X) + \lambda = 5 + 1 = \mathbf{6} $$
+                </div>
+                <div class="explanation-box">
+                    <strong>Interprétation :</strong> On "gonfle" artificiellement le dénominateur. On passe de 5 à 6. <br>
+                    <em>Règle mathématique :</em> Si on divise par un nombre plus grand, le résultat final sera plus petit. C'est ainsi que Ridge réduit les coefficients !
+                </div>
+            </div>
+
+            <div class="step-display" id="step4">
+                <h3>Étape 4 : Corrélation Input/Output ($X^T y$)</h3>
+                <p>On regarde comment X et y varient ensemble.</p>
+                <div class="formula-box">
+                    $$ (1 \times 2) + (2 \times 4) = 2 + 8 = \mathbf{10} $$
+                </div>
+                <div class="explanation-box">
+                    <strong>Interprétation :</strong> Le chiffre <strong>10</strong> représente le lien brut entre la surface et le prix.
+                </div>
+            </div>
+
+            <div class="step-display" id="step5">
+                <h3>Étape 5 : Le Résultat Final</h3>
+                <p>Comparons les deux calculs finaux ($\theta = \frac{\text{Corrélation}}{\text{Variance Modifiée}}$).</p>
+                
+                <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; flex:1; border: 1px solid #ffcdd2;">
+                        <h4 style="color: #c62828; margin-top:0;">Régression Standard ($\lambda=0$)</h4>
+                        $$ \theta = \frac{10}{5} = \mathbf{2} $$
+                        <p style="font-size: 0.9rem;">Le modèle suit parfaitement les données.</p>
+                    </div>
+                    
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; flex:1; border: 1px solid #c8e6c9;">
+                        <h4 style="color: #2e7d32; margin-top:0;">Régression Ridge ($\lambda=1$)</h4>
+                        $$ \theta = \frac{10}{6} \approx \mathbf{1.67} $$
+                        <p style="font-size: 0.9rem;">Le coefficient est réduit (Shrinkage). Le modèle est plus "prudent".</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="prev" id="btnPrev" onclick="changeStep(-1)" disabled>Précédent</button>
+                <span id="step-indicator" style="align-self: center; font-weight: bold; color: var(--secondary);">Étape 1 / 5</span>
+                <button class="next" id="btnNext" onclick="changeStep(1)">Suivant</button>
+            </div>
         </div>
+    </section>
 
-        <div class="controls">
-            <button id="prevBtn" onclick="moveStep(-1)" disabled>Précédent</button>
-            <span id="stepIndicator" style="padding-top: 10px; font-weight: bold;">Étape 1 / 5</span>
-            <button id="nextBtn" onclick="moveStep(1)">Suivant</button>
-        </div>
-    </div>
+</div>
 
-    <script>
-        let currentStep = 1;
-        const totalSteps = 5;
+<script>
+    let currentStep = 1;
+    const totalSteps = 5;
 
-        function moveStep(direction) {
-            // Masquer l'étape actuelle
-            document.getElementById(`step${currentStep}`).classList.remove('active');
-            
-            // Changer l'index
-            currentStep += direction;
-            
-            // Afficher la nouvelle étape
-            document.getElementById(`step${currentStep}`).classList.add('active');
+    function changeStep(direction) {
+        // Masquer l'étape actuelle
+        document.getElementById(`step${currentStep}`).classList.remove('active');
+        
+        // Changer l'index
+        currentStep += direction;
+        
+        // Afficher la nouvelle étape
+        document.getElementById(`step${currentStep}`).classList.add('active');
 
-            // Mise à jour des boutons
-            document.getElementById('prevBtn').disabled = (currentStep === 1);
-            document.getElementById('nextBtn').disabled = (currentStep === totalSteps);
-            
-            // Mise à jour du texte indicateur
-            document.getElementById('stepIndicator').innerText = `Étape ${currentStep} / ${totalSteps}`;
-        }
-    </script>
+        // Mise à jour des boutons
+        document.getElementById('btnPrev').disabled = (currentStep === 1);
+        document.getElementById('btnNext').disabled = (currentStep === totalSteps);
+        
+        // Mise à jour du texte
+        document.getElementById('step-indicator').innerText = `Étape ${currentStep} / ${totalSteps}`;
+    }
+</script>
 
 </body>
 </html>
