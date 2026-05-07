@@ -1,12 +1,12 @@
 // --- 1. SUPABASE SETUP ---
 const supabaseUrl = 'https://kjdasywpteblqnbuvony.supabase.co';
-// This is your SAFE public key. 
+// This is your SAFE public anon key
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZGFzeXdwdGVibHFuYnV2b255Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDEyNDYsImV4cCI6MjA5MzcxNzI0Nn0.5-6pV2SSJaAZ_9Lse1Tf-hso3SmutfrWrgwwM7vakxE';
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+// FIXED: We renamed 'supabase' to 'db' so it doesn't clash with the library name!
+const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 // --- 2. STATE ---
-// We will still use local hardcoded passwords just to hide the UI, 
-// but the actual saving/loading goes to the cloud.
 const users = {
     'jilicuerda': { password: 'jili', role: 'admin' },
     'lovisa': { password: '123', role: 'user' }
@@ -15,8 +15,8 @@ const users = {
 let currentUser = null;
 let currentViewDate = new Date(); 
 let currentViewMode = 'week'; 
-let cachedEvents = []; // Holds cloud data locally for fast drawing
-let cachedTodos = [];  // Holds cloud todos locally for fast drawing
+let cachedEvents = []; 
+let cachedTodos = [];  
 
 const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -57,7 +57,6 @@ async function showDashboard() {
         document.getElementById('admin-panel').classList.add('hidden');
     }
 
-    // Now we fetch from the Cloud before drawing!
     await loadTodosFromCloud();
     await fetchEventsFromCloud();
 }
@@ -81,7 +80,7 @@ async function changeView(viewType) {
     currentViewMode = viewType;
     const grid = document.getElementById('calendar-grid');
     grid.className = 'calendar-grid view-' + viewType;
-    await fetchEventsFromCloud(); // Fetch fresh data for the new view
+    await fetchEventsFromCloud(); 
 }
 
 async function navigateTime(direction) {
@@ -123,26 +122,22 @@ function isSameDay(d1, d2) {
 // --- 5. CLOUD CALENDAR LOGIC ---
 
 async function fetchEventsFromCloud() {
-    // We grab all events from the cloud
-    const { data, error } = await supabase.from('events').select('*');
+    const { data, error } = await db.from('events').select('*');
     if (error) console.error("Error fetching events:", error);
     if (data) cachedEvents = data;
     
-    renderCalendar(); // Draw the grid once data is downloaded
+    renderCalendar(); 
 }
 
 async function saveEvent(dateStr, hourStr, text, color) {
     if (text.trim() === '') {
-        // Delete from cloud
-        await supabase.from('events').delete().match({ event_date: dateStr, event_hour: hourStr });
+        await db.from('events').delete().match({ event_date: dateStr, event_hour: hourStr });
     } else {
-        // Upsert (Insert or Update) to cloud
-        await supabase.from('events').upsert(
+        await db.from('events').upsert(
             { event_date: dateStr, event_hour: hourStr, text: text, color: color },
             { onConflict: 'event_date, event_hour' }
         );
     }
-    // Refresh the screen
     fetchEventsFromCloud(); 
 }
 
@@ -156,7 +151,6 @@ function renderCalendar() {
 
     updateDateRangeDisplay(startDate, numDays);
 
-    // Header logic
     const tlCell = document.createElement('div');
     tlCell.className = 'grid-header-cell time-col';
     grid.appendChild(tlCell);
@@ -182,7 +176,6 @@ function renderCalendar() {
         grid.appendChild(headerCell);
     }
 
-    // Time Grid Logic
     for (let h = 0; h < 24; h++) {
         const timeCell = document.createElement('div');
         timeCell.className = 'time-label';
@@ -206,7 +199,6 @@ function renderCalendar() {
             const input = document.createElement('textarea');
             input.className = 'cell-input';
             
-            // Find event in our cached cloud data
             const eventObj = cachedEvents.find(e => e.event_date === dateStr && e.event_hour === hourStr);
             let hasContent = false;
 
@@ -218,7 +210,6 @@ function renderCalendar() {
                 }
             }
 
-            // Save when user finishes typing
             input.addEventListener('change', (e) => {
                 const existingColor = eventObj ? eventObj.color : null;
                 saveEvent(dateStr, hourStr, e.target.value, existingColor);
@@ -267,14 +258,13 @@ function handleDrop(e, dateStr, hourStr, cellElement) {
 
     const newText = existingText ? existingText + "\n" + task.text : task.text;
     
-    // Save to cloud
     saveEvent(dateStr, hourStr, newText, task.color);
 }
 
 // --- 7. CLOUD TO-DO LIST LOGIC ---
 
 async function loadTodosFromCloud() {
-    const { data, error } = await supabase.from('todos').select('*').order('created_at', { ascending: true });
+    const { data, error } = await db.from('todos').select('*').order('created_at', { ascending: true });
     if (error) console.error("Error fetching todos:", error);
     if (data) {
         cachedTodos = data;
@@ -330,29 +320,27 @@ async function addTodo() {
 
     if (text === '') return;
 
-    // Send to cloud
-    await supabase.from('todos').insert({ text: text, color: color, completed: false });
+    await db.from('todos').insert({ text: text, color: color, completed: false });
     
     input.value = '';
     loadTodosFromCloud();
 }
 
 async function toggleTodo(id, currentStatus) {
-    await supabase.from('todos').update({ completed: !currentStatus }).eq('id', id);
+    await db.from('todos').update({ completed: !currentStatus }).eq('id', id);
     loadTodosFromCloud();
 }
 
 async function deleteTodo(id) {
-    await supabase.from('todos').delete().eq('id', id);
+    await db.from('todos').delete().eq('id', id);
     loadTodosFromCloud();
 }
 
 // --- 8. ADMIN LOGIC ---
 async function clearAllData() {
     if(confirm("ADMIN: Are you sure you want to delete ALL data from the cloud? This cannot be undone.")) {
-        // Because we don't have an ID easily available, we delete where ID is NOT NULL (which is everything)
-        await supabase.from('events').delete().not('id', 'is', null);
-        await supabase.from('todos').delete().not('id', 'is', null);
+        await db.from('events').delete().not('id', 'is', null);
+        await db.from('todos').delete().not('id', 'is', null);
         
         await fetchEventsFromCloud();
         await loadTodosFromCloud();
