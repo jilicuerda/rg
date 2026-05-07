@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weekly Cloud Calendar</title>
     <link rel="stylesheet" href="style.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -29,34 +28,40 @@
             </div>
             
             <div class="nav-right">
+                <label for="site-bg-upload" class="btn-outline" style="cursor: pointer; margin-right: 15px;" title="Change Site Background">
+                    🖼️ Background
+                </label>
+                <input type="file" id="site-bg-upload" accept="image/*" class="hidden" onchange="updateSiteBackground(event)">
+
                 <span style="font-size: 13px; color: var(--text-muted); margin-right: 10px;">
-                    Logged in as: <strong id="user-display-name"></strong>
+                    User: <strong id="user-display-name"></strong>
                 </span>
                 
                 <select id="view-selector" class="select-outline" onchange="changeView(this.value)">
                     <option value="day">Day</option>
                     <option value="workweek">Work Week</option>
                     <option value="week" selected>Week</option>
-                </select>
+                    <option value="month">Month</option> </select>
 
-                <button class="btn-primary" style="width: auto;">+ New</button>
                 <button class="btn-outline" onclick="logout()">Log Out</button>
             </div>
         </header>
 
         <div class="workspace">
-            
             <div class="calendar-container" id="calendar-container">
                 <div class="calendar-grid view-week" id="calendar-grid">
                     </div>
             </div>
 
             <div class="sidebar">
-                <h3>To-Do List (Drag to Calendar)</h3>
+                <h3>To-Do List</h3>
                 <div class="todo-input-group">
-                    <input type="color" id="todo-color" class="color-picker" value="#5b5fc7" title="Choose a color">
-                    <input type="text" id="new-todo" placeholder="Add a task..." onkeypress="handleTodoKeyPress(event)">
-                    <button class="btn-primary" onclick="addTodo()">+</button>
+                    <input type="color" id="todo-color" class="color-picker" value="#5b5fc7" title="Task Color">
+                    <label for="todo-image" class="file-btn" title="Add Image to Task">📸</label>
+                    <input type="file" id="todo-image" accept="image/*" class="hidden">
+                    
+                    <input type="text" id="new-todo" placeholder="Add task..." onkeypress="handleTodoKeyPress(event)">
+                    <button class="btn-primary" onclick="addTodo()" id="add-btn">+</button>
                 </div>
                 <ul id="todo-list">
                     </ul>
@@ -66,7 +71,6 @@
                     <button class="btn-danger" onclick="clearAllData()">Clear Cloud Database</button>
                 </div>
             </div>
-
         </div>
     </div>
 

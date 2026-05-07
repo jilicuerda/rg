@@ -1,17 +1,10 @@
 // --- 1. SUPABASE SETUP ---
 const supabaseUrl = 'https://kjdasywpteblqnbuvony.supabase.co';
-// This is your SAFE public anon key
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqZGFzeXdwdGVibHFuYnV2b255Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNDEyNDYsImV4cCI6MjA5MzcxNzI0Nn0.5-6pV2SSJaAZ_9Lse1Tf-hso3SmutfrWrgwwM7vakxE';
-
-// FIXED: We renamed 'supabase' to 'db' so it doesn't clash with the library name!
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 // --- 2. STATE ---
-const users = {
-    'jilicuerda': { password: 'jili', role: 'admin' },
-    'lovisa': { password: '123', role: 'user' }
-};
-
+const users = { 'jilicuerda': { password: 'jili', role: 'admin' }, 'lovisa': { password: '123', role: 'user' } };
 let currentUser = null;
 let currentViewDate = new Date(); 
 let currentViewMode = 'week'; 
@@ -21,8 +14,24 @@ let cachedTodos = [];
 const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// --- 3. LOGIN/LOGOUT ---
-function attemptLogin() {
+// --- 3. UPLOAD HELPER ---
+// Takes a file, uploads to 'backgrounds' bucket, returns the URL
+async function uploadImageToSupabase(file) {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    
+    const { error } = await db.storage.from('backgrounds').upload(fileName, file);
+    if (error) {
+        alert("Error uploading image: " + error.message);
+        return null;
+    }
+    
+    const { data } = db.storage.from('backgrounds').getPublicUrl(fileName);
+    return data.publicUrl;
+}
+
+// --- 4. LOGIN & SITE BACKGROUND ---
+async function attemptLogin() {
     const userIn = document.getElementById('username').value.trim().toLowerCase();
     const passIn = document.getElementById('password').value;
     const errorDiv = document.getElementById('login-error');
@@ -30,16 +39,36 @@ function attemptLogin() {
     if (users[userIn] && users[userIn].password === passIn) {
         currentUser = { username: userIn, role: users[userIn].role };
         errorDiv.innerText = "";
+        
+        // Fetch personal site background
+        const { data } = await db.from('user_settings').select('site_bg').eq('username', currentUser.username).single();
+        if (data && data.site_bg) {
+            document.body.style.backgroundImage = `url('${data.site_bg}')`;
+        }
+
         showDashboard();
     } else {
         errorDiv.innerText = "Invalid username or password.";
     }
 }
 
+async function updateSiteBackground(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    document.getElementById('user-display-name').innerText = "Uploading BG...";
+    const imageUrl = await uploadImageToSupabase(file);
+    
+    if (imageUrl) {
+        document.body.style.backgroundImage = `url('${imageUrl}')`;
+        await db.from('user_settings').upsert({ username: currentUser.username, site_bg: imageUrl });
+    }
+    document.getElementById('user-display-name').innerText = currentUser.username;
+}
+
 function logout() {
     currentUser = null;
-    document.getElementById('username').value = "";
-    document.getElementById('password').value = "";
+    document.body.style.backgroundImage = "none";
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('app-dashboard').classList.add('hidden');
 }
@@ -47,94 +76,46 @@ function logout() {
 async function showDashboard() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-dashboard').classList.remove('hidden');
+    document.getElementById('user-display-name').innerText = currentUser.username;
+    if (currentUser.role === 'admin') document.getElementById('admin-panel').classList.remove('hidden');
     
-    const formattedName = currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1);
-    document.getElementById('user-display-name').innerText = formattedName;
-
-    if (currentUser.role === 'admin') {
-        document.getElementById('admin-panel').classList.remove('hidden');
-    } else {
-        document.getElementById('admin-panel').classList.add('hidden');
-    }
-
     await loadTodosFromCloud();
     await fetchEventsFromCloud();
 }
 
-// --- 4. VIEW & DATE LOGIC ---
-function getStartOfView(date) {
-    const d = new Date(date);
-    if (currentViewMode === 'day') return d; 
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-    return new Date(d.setDate(diff));
-}
-
-function getDaysInView() {
-    if (currentViewMode === 'day') return 1;
-    if (currentViewMode === 'workweek') return 5; 
-    return 7; 
-}
-
+// --- 5. VIEWS ---
 async function changeView(viewType) {
     currentViewMode = viewType;
     const grid = document.getElementById('calendar-grid');
     grid.className = 'calendar-grid view-' + viewType;
-    await fetchEventsFromCloud(); 
+    renderCalendar(); 
 }
 
 async function navigateTime(direction) {
-    if (currentViewMode === 'day') {
-        currentViewDate.setDate(currentViewDate.getDate() + direction);
-    } else {
-        currentViewDate.setDate(currentViewDate.getDate() + (direction * 7));
-    }
-    await fetchEventsFromCloud();
+    if (currentViewMode === 'day') currentViewDate.setDate(currentViewDate.getDate() + direction);
+    else if (currentViewMode === 'month') currentViewDate.setMonth(currentViewDate.getMonth() + direction);
+    else currentViewDate.setDate(currentViewDate.getDate() + (direction * 7));
+    renderCalendar();
 }
 
 async function jumpToToday() {
     currentViewDate = new Date();
-    await fetchEventsFromCloud();
+    renderCalendar();
 }
 
-function updateDateRangeDisplay(startDate, numDays) {
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + (numDays - 1));
-
-    if (numDays === 1) {
-        const day = startDate.getDate().toString().padStart(2, '0');
-        const month = monthsEn[startDate.getMonth()];
-        const year = startDate.getFullYear();
-        document.getElementById('week-date-range').innerText = `${month} ${day}, ${year}`;
-    } else {
-        const startDay = startDate.getDate().toString().padStart(2, '0');
-        const endDay = endDate.getDate().toString().padStart(2, '0');
-        const monthStr = monthsEn[startDate.getMonth()];
-        const yearStr = startDate.getFullYear();
-        document.getElementById('week-date-range').innerText = `${monthStr} ${startDay}-${endDay}, ${yearStr}`;
-    }
-}
-
-function isSameDay(d1, d2) {
-    return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
-}
-
-// --- 5. CLOUD CALENDAR LOGIC ---
-
+// --- 6. RENDER CALENDAR CORE ---
 async function fetchEventsFromCloud() {
-    const { data, error } = await db.from('events').select('*');
-    if (error) console.error("Error fetching events:", error);
+    const { data } = await db.from('events').select('*');
     if (data) cachedEvents = data;
-    
     renderCalendar(); 
 }
 
-async function saveEvent(dateStr, hourStr, text, color) {
+async function saveEvent(dateStr, hourStr, text, color, bgImage) {
     if (text.trim() === '') {
         await db.from('events').delete().match({ event_date: dateStr, event_hour: hourStr });
     } else {
         await db.from('events').upsert(
-            { event_date: dateStr, event_hour: hourStr, text: text, color: color },
+            { event_date: dateStr, event_hour: hourStr, text: text, color: color, bg_image: bgImage },
             { onConflict: 'event_date, event_hour' }
         );
     }
@@ -144,53 +125,106 @@ async function saveEvent(dateStr, hourStr, text, color) {
 function renderCalendar() {
     const grid = document.getElementById('calendar-grid');
     grid.innerHTML = ''; 
+
+    if (currentViewMode === 'month') {
+        renderMonthView(grid);
+    } else {
+        renderTimeGrid(grid);
+    }
+}
+
+// NEW: Monthly View Logic
+function renderMonthView(grid) {
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
     
-    const startDate = getStartOfView(currentViewDate);
-    const numDays = getDaysInView();
-    const today = new Date();
+    document.getElementById('week-date-range').innerText = `${monthsEn[month]} ${year}`;
 
-    updateDateRangeDisplay(startDate, numDays);
+    // Month Headers
+    for (let i = 0; i < 7; i++) {
+        const header = document.createElement('div');
+        header.className = 'grid-header-cell';
+        header.innerHTML = `<div class="day-name" style="font-size:14px; font-weight:bold;">${daysEn[i]}</div>`;
+        grid.appendChild(header);
+    }
 
+    // Days calculation
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Empty cells before the 1st
+    for (let i = 0; i < firstDay; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'month-cell';
+        grid.appendChild(cell);
+    }
+
+    // Actual days
+    for (let d = 1; d <= daysInMonth; d++) {
+        const cell = document.createElement('div');
+        cell.className = 'month-cell';
+        cell.innerHTML = `<div class="month-cell-date">${d}</div>`;
+        
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        
+        // Find all events for this day and show tiny blocks
+        const dayEvents = cachedEvents.filter(e => e.event_date === dateStr);
+        dayEvents.forEach(ev => {
+            const dot = document.createElement('div');
+            dot.className = 'month-event-dot';
+            if(ev.color) dot.style.backgroundColor = ev.color;
+            dot.innerText = `${ev.event_hour} - ${ev.text}`;
+            cell.appendChild(dot);
+        });
+
+        grid.appendChild(cell);
+    }
+}
+
+// OLD: Daily/Weekly Grid
+function renderTimeGrid(grid) {
+    let numDays = currentViewMode === 'day' ? 1 : (currentViewMode === 'workweek' ? 5 : 7);
+    const d = new Date(currentViewDate);
+    if (currentViewMode !== 'day') {
+        const day = d.getDay();
+        d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); // Start on Monday
+    }
+    const startDate = new Date(d);
+    
+    // Set text display
+    const end = new Date(startDate); end.setDate(end.getDate() + (numDays - 1));
+    document.getElementById('week-date-range').innerText = numDays === 1 
+        ? `${monthsEn[startDate.getMonth()]} ${startDate.getDate()}, ${startDate.getFullYear()}`
+        : `${monthsEn[startDate.getMonth()]} ${startDate.getDate()}-${end.getDate()}, ${startDate.getFullYear()}`;
+
+    // Top Left empty
     const tlCell = document.createElement('div');
     tlCell.className = 'grid-header-cell time-col';
     grid.appendChild(tlCell);
 
+    // Day Headers
     for (let i = 0; i < numDays; i++) {
-        const cellDate = new Date(startDate);
-        cellDate.setDate(startDate.getDate() + i);
-        
+        const cellDate = new Date(startDate); cellDate.setDate(startDate.getDate() + i);
         const headerCell = document.createElement('div');
         headerCell.className = 'grid-header-cell';
-        if (isSameDay(cellDate, today)) headerCell.classList.add('current-day-header');
-
-        const dayNum = document.createElement('div');
-        dayNum.className = 'day-number';
-        dayNum.innerText = cellDate.getDate().toString().padStart(2, '0');
-
-        const dayName = document.createElement('div');
-        dayName.className = 'day-name';
-        dayName.innerText = daysEn[cellDate.getDay()];
-
-        headerCell.appendChild(dayNum);
-        headerCell.appendChild(dayName);
+        headerCell.innerHTML = `<div class="day-number">${String(cellDate.getDate()).padStart(2, '0')}</div><div class="day-name">${daysEn[cellDate.getDay()]}</div>`;
         grid.appendChild(headerCell);
     }
 
+    // Time Grid
     for (let h = 0; h < 24; h++) {
         const timeCell = document.createElement('div');
         timeCell.className = 'time-label';
-        timeCell.innerText = h.toString().padStart(2, '0') + ':00';
+        timeCell.innerText = String(h).padStart(2, '0') + ':00';
         grid.appendChild(timeCell);
 
         for (let d = 0; d < numDays; d++) {
-            const cellDate = new Date(startDate);
-            cellDate.setDate(startDate.getDate() + d);
+            const cellDate = new Date(startDate); cellDate.setDate(startDate.getDate() + d);
             const dateStr = cellDate.toISOString().split('T')[0]; 
-            const hourStr = h.toString().padStart(2, '0');
+            const hourStr = String(h).padStart(2, '0');
 
             const cell = document.createElement('div');
             cell.className = 'grid-cell';
-            if (isSameDay(cellDate, today)) cell.classList.add('current-day-cell');
 
             cell.ondragover = (e) => { e.preventDefault(); cell.classList.add('drag-over'); };
             cell.ondragleave = (e) => { cell.classList.remove('drag-over'); };
@@ -200,32 +234,28 @@ function renderCalendar() {
             input.className = 'cell-input';
             
             const eventObj = cachedEvents.find(e => e.event_date === dateStr && e.event_hour === hourStr);
-            let hasContent = false;
-
             if (eventObj) {
                 input.value = eventObj.text || '';
-                if (input.value.trim() !== '') hasContent = true;
-                if (eventObj.color) {
-                    cell.style.backgroundColor = applyTransparency(eventObj.color, 0.2);
+                if (eventObj.color) cell.style.backgroundColor = applyTransparency(eventObj.color, 0.3);
+                // Apply task image to the cell background!
+                if (eventObj.bg_image) {
+                    cell.style.backgroundImage = `url('${eventObj.bg_image}')`;
                 }
             }
 
             input.addEventListener('change', (e) => {
-                const existingColor = eventObj ? eventObj.color : null;
-                saveEvent(dateStr, hourStr, e.target.value, existingColor);
+                const exColor = eventObj ? eventObj.color : null;
+                const exBg = eventObj ? eventObj.bg_image : null;
+                saveEvent(dateStr, hourStr, e.target.value, exColor, exBg);
             });
 
             cell.appendChild(input);
-
-            if (hasContent) {
+            if (eventObj && input.value.trim() !== '') {
                 const clearBtn = document.createElement('button');
-                clearBtn.innerHTML = '×';
-                clearBtn.className = 'clear-cell-btn';
-                clearBtn.title = "Clear this slot";
-                clearBtn.onclick = () => saveEvent(dateStr, hourStr, '', null);
+                clearBtn.innerHTML = '×'; clearBtn.className = 'clear-cell-btn';
+                clearBtn.onclick = () => saveEvent(dateStr, hourStr, '', null, null);
                 cell.appendChild(clearBtn);
             }
-
             grid.appendChild(cell);
         }
     }
@@ -233,16 +263,12 @@ function renderCalendar() {
 
 function applyTransparency(hex, alpha) {
     if(!hex || !hex.startsWith('#')) return '';
-    let r = parseInt(hex.slice(1, 3), 16),
-        g = parseInt(hex.slice(3, 5), 16),
-        b = parseInt(hex.slice(5, 7), 16);
+    let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// --- 6. DRAG AND DROP ---
-function handleDragStart(e, index) {
-    e.dataTransfer.setData('text/plain', index);
-}
+// --- 7. DRAG AND DROP ---
+function handleDragStart(e, index) { e.dataTransfer.setData('text/plain', index); }
 
 function handleDrop(e, dateStr, hourStr, cellElement) {
     e.preventDefault();
@@ -252,24 +278,18 @@ function handleDrop(e, dateStr, hourStr, cellElement) {
     if (todoIndex === '') return;
 
     const task = cachedTodos[todoIndex];
-    
     const existingEvent = cachedEvents.find(ev => ev.event_date === dateStr && ev.event_hour === hourStr);
-    let existingText = existingEvent ? existingEvent.text : "";
-
+    const existingText = existingEvent ? existingEvent.text : "";
     const newText = existingText ? existingText + "\n" + task.text : task.text;
     
-    saveEvent(dateStr, hourStr, newText, task.color);
+    // Carry over the color and image from the task!
+    saveEvent(dateStr, hourStr, newText, task.color, task.bg_image);
 }
 
-// --- 7. CLOUD TO-DO LIST LOGIC ---
-
+// --- 8. TO-DOS ---
 async function loadTodosFromCloud() {
-    const { data, error } = await db.from('todos').select('*').order('created_at', { ascending: true });
-    if (error) console.error("Error fetching todos:", error);
-    if (data) {
-        cachedTodos = data;
-        renderTodos();
-    }
+    const { data } = await db.from('todos').select('*').order('created_at', { ascending: true });
+    if (data) { cachedTodos = data; renderTodos(); }
 }
 
 function renderTodos() {
@@ -279,50 +299,65 @@ function renderTodos() {
     cachedTodos.forEach((todo, index) => {
         const li = document.createElement('li');
         li.style.borderLeftColor = todo.color || 'var(--primary-color)';
+        if (todo.bg_image) li.style.backgroundImage = `url('${todo.bg_image}')`;
         
         li.draggable = true;
         li.ondragstart = (e) => handleDragStart(e, index);
 
-        if (todo.completed) li.classList.add('completed');
+        // Container to keep text readable over images
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'task-content';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = todo.completed;
         checkbox.onchange = () => toggleTodo(todo.id, todo.completed);
-        checkbox.style.marginTop = '4px';
 
         const span = document.createElement('span');
         span.innerText = todo.text;
-        span.onclick = () => toggleTodo(todo.id, todo.completed);
+        if(todo.completed) span.style.textDecoration = "line-through";
 
         const delBtn = document.createElement('button');
         delBtn.innerHTML = '×';
         delBtn.className = 'delete-btn';
-        delBtn.title = "Delete Task";
         delBtn.onclick = () => deleteTodo(todo.id);
 
-        li.appendChild(checkbox);
-        li.appendChild(span);
-        li.appendChild(delBtn);
+        contentDiv.appendChild(checkbox);
+        contentDiv.appendChild(span);
+        contentDiv.appendChild(delBtn);
+        li.appendChild(contentDiv);
         list.appendChild(li);
     });
 }
 
-function handleTodoKeyPress(e) {
-    if (e.key === 'Enter') addTodo();
-}
+function handleTodoKeyPress(e) { if (e.key === 'Enter') addTodo(); }
 
 async function addTodo() {
     const input = document.getElementById('new-todo');
     const colorInput = document.getElementById('todo-color');
+    const imageInput = document.getElementById('todo-image');
+    const btn = document.getElementById('add-btn');
+    
     const text = input.value.trim();
-    const color = colorInput.value;
-
     if (text === '') return;
 
-    await db.from('todos').insert({ text: text, color: color, completed: false });
+    btn.innerText = "..."; // Show loading state
+
+    let uploadedImageUrl = null;
+    if (imageInput.files.length > 0) {
+        uploadedImageUrl = await uploadImageToSupabase(imageInput.files[0]);
+    }
+
+    await db.from('todos').insert({ 
+        text: text, 
+        color: colorInput.value, 
+        completed: false,
+        bg_image: uploadedImageUrl
+    });
     
     input.value = '';
+    imageInput.value = ''; // clear file
+    btn.innerText = "+";
     loadTodosFromCloud();
 }
 
@@ -336,14 +371,12 @@ async function deleteTodo(id) {
     loadTodosFromCloud();
 }
 
-// --- 8. ADMIN LOGIC ---
+// --- 9. ADMIN ---
 async function clearAllData() {
-    if(confirm("ADMIN: Are you sure you want to delete ALL data from the cloud? This cannot be undone.")) {
+    if(confirm("ADMIN: Delete ALL data?")) {
         await db.from('events').delete().not('id', 'is', null);
         await db.from('todos').delete().not('id', 'is', null);
-        
         await fetchEventsFromCloud();
         await loadTodosFromCloud();
-        alert("Cloud database cleared.");
     }
 }
